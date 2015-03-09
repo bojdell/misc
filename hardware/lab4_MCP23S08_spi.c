@@ -23,7 +23,9 @@ char SPIaddr[5] = {
 		0x5,	// IOCON
 		0xA		// OLAT
 	}
+char GPIOaddr = 0x9;
 
+// writes initial values to MCP23S08 registers
 void Init_MCP23S08 (unsigned int IODIRvalue, unsigned int IPOLvalue, unsigned int GPPUvalue, unsigned int IOCONvalue, unsigned int OLATvalue) {
 	// treat params as array (pushed on calling stack from right to left, so IODIRvalue is on top)
 	unsigned int SPIvals[5] = &IODIRvalue;
@@ -32,9 +34,10 @@ void Init_MCP23S08 (unsigned int IODIRvalue, unsigned int IPOLvalue, unsigned in
 	for(i = 0; i < 5; i++) {
 		// clear CS
 		GpioDataRegs.GPASET.bit.GPIO48_SV17 = 1;
+		SpiaRegs.SPIFFRX.bit.RXFFIL = 3;
 
 		// send SPI command to MCP23S08 (value is 0x40, since hardware select A1A0 is 0 and we are writing (LSB is low))
-		SpiaRegs.SPITXBUF = ((unsigned)0x40) << 8;
+		SpiaRegs.SPITXBUF = SPIcommand;
 
 		// send MCP23S08 register address we are writing to
 		SpiaRegs.SPITXBUF = SPIaddr[i];
@@ -42,9 +45,48 @@ void Init_MCP23S08 (unsigned int IODIRvalue, unsigned int IPOLvalue, unsigned in
 		// send data we would like to write to register
 		SpiaRegs.SPITXBUF = SPIvals[i] << 8;
 
-		// repeat for all registers
+		// wait for a response
+		while (SpiaRegs.SPIFFRX.bit.RXFFST != 3) {}
+
+		// clear all chip selects and read garbage data
 		GpioDataRegs.GPACLEAR.bit.GPIO48_SV17 = 1;
+		SPIbyte1 = SpiaRegs.SPIRXBUF;
+		SPIbyte2 = SpiaRegs.SPIRXBUF;
+		SPIbyte3 = SpiaRegs.SPIRXBUF;
+
+		// repeat for all registers
 	}
+
+}
+
+// writes a value to the OLAT register
+void SetPortLatch(unsigned int byte) {
+
+	// clear CS
+	GpioDataRegs.GPASET.bit.GPIO48_SV17 = 1;
+	SpiaRegs.SPIFFRX.bit.RXFFIL = 3;
+
+	// send SPI command to MCP23S08 (value is 0x40, since hardware select A1A0 is 0 and we are writing (LSB is low))
+	SpiaRegs.SPITXBUF = SPIcommand;
+
+	// send OLAT register address we are writing to
+	SpiaRegs.SPITXBUF = SPIaddr[4];
+
+	// send data we would like to write to register
+	SpiaRegs.SPITXBUF = ((unsigned)byte) << 8;
+
+	// wait for a response
+	while (SpiaRegs.SPIFFRX.bit.RXFFST != 3) {}
+
+	// clear all chip selects and read garbage data
+	GpioDataRegs.GPACLEAR.bit.GPIO48_SV17 = 1;
+	SPIbyte1 = SpiaRegs.SPIRXBUF;
+	SPIbyte2 = SpiaRegs.SPIRXBUF;
+	SPIbyte3 = SpiaRegs.SPIRXBUF;
+}
+
+// reads the value of the GPIO register
+unsigned int ReadPort(void) {
 
 }
 
