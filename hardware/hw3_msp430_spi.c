@@ -1,13 +1,12 @@
 /******************************************************************************
-MSP430G2553 Project Creator
-
-GE 423  - Dan Block
-        Spring(2012)
-
-        Written(by) : Steve(Keres)
-College of Engineering Control Systems Lab
-University of Illinois at Urbana-Champaign
-*******************************************************************************/
+ * GE 423: Mechatronics
+ * Spring 2015
+ * 
+ * HW 3 - Problems 5 & 6
+ * 
+ * Bodecker DellaMaria
+ * dellama2@illinois.edu
+ *******************************************************************************/
 
 //                    MSP430G2xx3
 //                 -----------------
@@ -19,7 +18,7 @@ University of Illinois at Urbana-Champaign
 //                |                 |
 //           FS <-| P1.6        P1.7|<- Data In (UCB0SOMI)
 //                |                 |
-//  Slave reset <-|             P1.5|-> Serial Clock Out (UCB0CLK)
+//                |             P1.5|-> Serial Clock Out (UCB0CLK)
 //
 
 #include "msp430g2553.h"
@@ -27,10 +26,12 @@ University of Illinois at Urbana-Champaign
 
 #define LIGHTS_OFF			200		// photoresistor threshold (calibrated via readings)
 #define LIGHTS_ON			800		// calibtrated lights on value
-#define SERVO_0deg			40000 - 1200
-#define SERVO_90deg			40000 - 3600
-#define SERVO_180deg		40000 - 6000
-#define MAX_ADC_VAL			0x03ff
+
+// for PWM duty cycle, inverted because I used OUTMOD_3
+#define SERVO_0deg			40000 - 1200	// 0deg = 0.6ms = 3%
+#define SERVO_90deg			40000 - 3600	// 90deg = 1.8ms = 9%
+#define SERVO_180deg		40000 - 6000	// 180deg = 3.0 ms = 15%
+#define MAX_ADC_VAL			0x03ff			// max value that can be sent to 10-bit ADC
 
 char newprint = 0;
 unsigned long timecnt = 0;  
@@ -68,10 +69,8 @@ void main(void) {
 	P2SEL |= BIT4;		// select TA mode
 	P2SEL2 &= ~BIT4;	// select TA mode
 
-//	TA1CCR0 = 40000-1;            // PWM Period = 16MHz / (CCR0 * clock_divider) want = 50hz. (16MHz / 8 = 2 MHz), 2,000,000Hz / 50Hz = 40000 = CCR0
-	TA1CCTL2 = OUTMOD_3;          // set up timerA to operate in Set/Reset mode
-	TA1CCR2 = SERVO_0deg;               	// CCR1 PWM duty cycle = 8.5% (0deg = 0.6ms = 3%, 90deg = 1.8ms = 9%, 180deg = 3.0 ms = 15%)
-//	TA1CTL = TASSEL_2 + MC_1 + ID1 + ID0;   // SMCLK, up mode, divide by 8
+	TA1CCTL2 = OUTMOD_3;          // set up to operate in Set/Reset mode
+	TA1CCR2 = SERVO_0deg;         // CCR1 PWM duty cycle = 8.5% (0deg = 0.6ms = 3%, 90deg = 1.8ms = 9%, 180deg = 3.0 ms = 15%)
 
 
 	P1OUT = 0x00;           // reset P1 outputs
@@ -128,24 +127,18 @@ void main(void) {
 		if (newprint)  {
 			ADC10CTL0 |= ENC + ADC10SC;             // Sampling and conversion start
 
-//			mst_data_MSB = (char)(ramp_val >> 8);
-//			mst_data_LSB = (char)ramp_val;
-//
-//			second_byte_sent = 0;			// init flag
-//			P1OUT |= BIT6;					// pulse FS
-//			P1OUT &= ~BIT6;
-//
-//			UCB0TXBUF = mst_data_MSB;       // Transmit first character
-
+			// print some data
 			UART_printf("Hello %x %x %x %d\n\r",(unsigned int)(ramp_val), (int)(mst_data_MSB), (int)(mst_data_LSB), (unsigned int)(adc_val));
+			
+			// update servo positions
 			TA1CCR1 = servo_position;
 			TA1CCR2 = servo_position;
 
 			newprint = 0;
 		}
 		if(adcready) {
+			// update ramp val (normalize to potentiometer reading)
 			ramp_val = (int)(((float)adc_val / LIGHTS_ON) * 1024);
-
 			adcready = 0;
 		}
 
@@ -158,14 +151,14 @@ void main(void) {
 __interrupt void Timer_A (void)
 {
 	timecnt++; // Keep track of time for main while loop.
-//	ramp_val++;
-	if(ramp_val > MAX_ADC_VAL)
+//	ramp_val++;	// used in abscence of pot.
+	if(ramp_val > MAX_ADC_VAL)	// reset ramp if over max val
 		ramp_val = 0;
 
-	mst_data_MSB = (char)(ramp_val >> 6);
+	mst_data_MSB = (char)(ramp_val >> 6);	// parse out bytes from 16-bit ramp_val
 	mst_data_LSB = (char)(ramp_val << 2);
 
-	second_byte_sent = 0;			// init flag
+	second_byte_sent = 0;			// init flag for second byte
 	P1OUT |= BIT6;					// pulse FS
 	P1OUT &= ~BIT6;
 
@@ -216,7 +209,6 @@ __interrupt void USCI0RX_ISR(void) {
 		IFG2 &= ~UCA0RXIFG;
 	}
 }
-
 
 
 // USCI Transmit ISR - Called when TXBUF is empty (ready to accept another character)
